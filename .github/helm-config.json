@@ -1,0 +1,71 @@
+{
+  "helmConfig": {
+    "version": "3.12.0",
+    "repositories": [
+      {
+        "name": "stable",
+        "url": "https://charts.helm.sh/stable"
+      },
+      {
+        "name": "bitnami",
+        "url": "https://charts.bitnami.com/bitnami"
+      }
+    ],
+    "charts": [
+      {
+        "name": "relayshield",
+        "path": "helm/relayshield",
+        "namespace": "relayshield",
+        "environments": {
+          "dev": {
+            "valueFile": "helm/relayshield/values-dev.yaml",
+            "replicas": 1,
+            "resources": {
+              "requests": {
+                "cpu": "100m",
+                "memory": "128Mi"
+              },
+              "limits": {
+                "cpu": "500m",
+                "memory": "512Mi"
+              }
+            }
+          },
+          "staging": {
+            "valueFile": "helm/relayshield/values-staging.yaml",
+            "replicas": 2,
+            "resources": {
+              "requests": {
+                "cpu": "250m",
+                "memory": "256Mi"
+              },
+              "limits": {
+                "cpu": "1000m",
+                "memory": "1Gi"
+              }
+            }
+          },
+          "prod": {
+            "valueFile": "helm/relayshield/values-prod.yaml",
+            "replicas": 3,
+            "resources": {
+              "requests": {
+                "cpu": "500m",
+                "memory": "512Mi"
+              },
+              "limits": {
+                "cpu": "2000m",
+                "memory": "2Gi"
+              }
+            }
+          }
+        },
+        "validation": {
+          "kubeval": true,
+          "kubesec": true,
+          "kube-score": true
+        }
+      }
+    ]
+  }
+}
