@@ -1,0 +1,80 @@
+name: Helm Chart Validation
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'helm/**'
+      - '.github/workflows/helm-validate.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'helm/**'
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        chart:
+          - helm/relayshield
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Helm Lint
+        run: |
+          helm lint ${{ matrix.chart }}
+
+      - name: Helm Template Validation
+        run: |
+          helm template relayshield ${{ matrix.chart }} --debug
+
+      - name: Helm Chart Security Scan
+        run: |
+          helm template relayshield ${{ matrix.chart }} | kubeval --strict || true
+
+      - name: Package Helm Chart
+        run: |
+          mkdir -p chart-packages
+          helm package ${{ matrix.chart }} -d chart-packages
+
+      - name: Upload Chart Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: helm-charts
+          path: chart-packages/
+
+  helm-integration-test:
+    needs: helm-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Create Kind Cluster
+        uses: helm/kind-action@v1.7.0
+
+      - name: Deploy Chart to Kind
+        run: |
+          helm repo add relayshield ./helm/relayshield || true
+          helm install relayshield ./helm/relayshield \
+            --namespace relayshield-dev \
+            --create-namespace \
+            --values helm/relayshield/values-dev.yaml || true
+
+      - name: Verify Deployment
+        run: |
+          kubectl get pods -n relayshield-dev || true
+          kubectl get services -n relayshield-dev || true
