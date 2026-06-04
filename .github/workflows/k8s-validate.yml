@@ -1,0 +1,88 @@
+name: Kubernetes Manifest Validation
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'k8s/**'
+      - '.github/workflows/k8s-validate.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'k8s/**'
+
+jobs:
+  k8s-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+
+      - name: Validate Kubernetes Manifests
+        run: |
+          find k8s -name "*.yaml" -o -name "*.yml" | while read file; do
+            echo "Validating $file"
+            kubeval --strict "$file" || exit 1
+          done
+
+  k8s-security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Kubesec Security Scan
+        run: |
+          docker run -v $(pwd)/k8s:/k8s kubesec/kubesec:512c5e8 scan /k8s/**/*.yaml || true
+
+      - name: Set up kube-score
+        run: |
+          wget https://github.com/zegl/kube-score/releases/download/v1.17.0/kube-score_linux_amd64 -O kube-score
+          chmod +x kube-score
+          sudo mv kube-score /usr/local/bin
+
+      - name: Run kube-score Analysis
+        run: |
+          find k8s -name "*.yaml" -o -name "*.yml" | while read file; do
+            echo "Analyzing $file"
+            kube-score score "$file" || true
+          done
+
+  k8s-deploy-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.0'
+
+      - name: Create Kind Cluster for Dry Run
+        uses: helm/kind-action@v1.7.0
+
+      - name: Dry Run Deployment
+        run: |
+          find k8s -name "*.yaml" -o -name "*.yml" | while read file; do
+            echo "Dry-running $file"
+            kubectl apply --dry-run=client -f "$file" || exit 1
+          done
+
+      - name: Apply to Test Cluster
+        run: |
+          kubectl create namespace relayshield-test || true
+          find k8s -name "*.yaml" -o -name "*.yml" | while read file; do
+            echo "Applying $file to test cluster"
+            kubectl apply -n relayshield-test -f "$file" || true
+          done
+
+      - name: Verify Resources
+        run: |
+          kubectl get all -n relayshield-test || true
