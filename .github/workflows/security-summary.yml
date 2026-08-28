@@ -1,0 +1,115 @@
+name: Security Summary Report
+
+on:
+  workflow_run:
+    workflows:
+      - "Python Security Scan"
+      - "Secret Detection"
+      - "Dependency Audit"
+      - "CodeQL Analysis"
+    types:
+      - completed
+
+jobs:
+  generate-summary:
+    name: Generate Security Summary
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+          pattern: '*'
+
+      - name: Generate Security Report
+        run: |
+          #!/bin/bash
+          set -e
+
+          echo "# Security Scan Summary" > SECURITY_REPORT.md
+          echo "" >> SECURITY_REPORT.md
+          echo "**Generated:** $(date -u)" >> SECURITY_REPORT.md
+          echo "**Repository:** ${{ github.repository }}" >> SECURITY_REPORT.md
+          echo "**Branch:** ${{ github.ref_name }}" >> SECURITY_REPORT.md
+          echo "" >> SECURITY_REPORT.md
+
+          # Check for vulnerabilities
+          echo "## Vulnerability Findings" >> SECURITY_REPORT.md
+          echo "" >> SECURITY_REPORT.md
+
+          # Bandit
+          if [ -f artifacts/bandit-report/bandit-report.json ]; then
+            BANDIT_ISSUES=$(jq '.results | length' artifacts/bandit-report/bandit-report.json 2>/dev/null || echo "0")
+            echo "- **Bandit:** $BANDIT_ISSUES issues found" >> SECURITY_REPORT.md
+          fi
+
+          # Safety
+          if [ -f artifacts/safety-report/safety-report.json ]; then
+            SAFETY_ISSUES=$(jq '. | length' artifacts/safety-report/safety-report.json 2>/dev/null || echo "0")
+            echo "- **Safety:** $SAFETY_ISSUES vulnerable dependencies" >> SECURITY_REPORT.md
+          fi
+
+          # pip-audit
+          if [ -f artifacts/pip-audit-report/pip-audit-report.json ]; then
+            PIP_AUDIT_ISSUES=$(jq '.dependencies | length' artifacts/pip-audit-report/pip-audit-report.json 2>/dev/null || echo "0")
+            echo "- **pip-audit:** $PIP_AUDIT_ISSUES vulnerabilities detected" >> SECURITY_REPORT.md
+          fi
+
+          # Semgrep
+          if [ -f artifacts/semgrep-report/semgrep-report.json ]; then
+            SEMGREP_ISSUES=$(jq '.results | length' artifacts/semgrep-report/semgrep-report.json 2>/dev/null || echo "0")
+            echo "- **Semgrep:** $SEMGREP_ISSUES findings" >> SECURITY_REPORT.md
+          fi
+
+          # CodeQL
+          if [ -f artifacts/codeql-results/codeql-results.sarif ]; then
+            CODEQL_ISSUES=$(jq '.runs[0].results | length' artifacts/codeql-results/codeql-results.sarif 2>/dev/null || echo "0")
+            echo "- **CodeQL:** $CODEQL_ISSUES alerts" >> SECURITY_REPORT.md
+          fi
+
+          echo "" >> SECURITY_REPORT.md
+          echo "## Secret Detection" >> SECURITY_REPORT.md
+          echo "" >> SECURITY_REPORT.md
+          echo "- **Gitleaks:** Check workflow logs for details" >> SECURITY_REPORT.md
+          echo "- **TruffleHog:** Check workflow logs for details" >> SECURITY_REPORT.md
+          echo "- **GitGuardian:** Check workflow logs for details" >> SECURITY_REPORT.md
+
+          echo "" >> SECURITY_REPORT.md
+          echo "## Recommendations" >> SECURITY_REPORT.md
+          echo "" >> SECURITY_REPORT.md
+          echo "1. Review all findings in the respective workflow logs" >> SECURITY_REPORT.md
+          echo "2. Update dependencies with known vulnerabilities" >> SECURITY_REPORT.md
+          echo "3. Remove any detected secrets immediately" >> SECURITY_REPORT.md
+          echo "4. Fix code quality issues identified by static analysis" >> SECURITY_REPORT.md
+
+          cat SECURITY_REPORT.md
+
+      - name: Upload Security Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-summary
+          path: SECURITY_REPORT.md
+          retention-days: 90
+
+      - name: Create GitHub Issue for Critical Findings
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('SECURITY_REPORT.md', 'utf8');
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Security Scan: Critical Findings in ${{ github.ref_name }}`,
+              body: `## Security Alert\n\n${report}\n\n**Action Required:** Please review and address these security findings.`,
+              labels: ['security', 'critical', 'automated']
+            });
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true

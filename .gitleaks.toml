@@ -1,0 +1,69 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist for known false positives"
+paths = [
+  '''test_.*\.py$''',
+  '''.*\.min\.js$''',
+  '''.*\.test\.js$''',
+  '''fixtures/.*''',
+  '''mock_.*\.json$'''
+]
+
+regexes = [
+  # Ignore test API keys
+  '''(?i)(test|mock|example|sample).*key''',
+  # Ignore placeholder values
+  '''placeholder|dummy|example|sample''',
+  # Ignore common test patterns
+  '''sk_test_|pk_test_'''
+]
+
+[[rules]]
+id = "api-key-detection"
+description = "API Key Detection"
+regex = '''(?i)(api[_-]?key|apikey|api[_-]?secret|secret[_-]?key)['"]?\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{20,}['"]?'''
+tags = ["api", "secret"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key"
+regex = '''(?i)(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+tags = ["aws", "secret"]
+
+[[rules]]
+id = "github-token"
+description = "GitHub Token"
+regex = '''(?i)(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "slack-token"
+description = "Slack Token"
+regex = '''(xox[baprs]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*)'''
+tags = ["slack", "token"]
+
+[[rules]]
+id = "generic-secret"
+description = "Generic Secret Pattern"
+regex = '''(?i)(secret|password|passwd|token|credential|private[_-]?key)['"]?\s*[:=]\s*['"]?[a-zA-Z0-9_\-!@#$%^&*]{8,}['"]?'''
+tags = ["secret", "password"]
+
+[[rules]]
+id = "private-key"
+description = "Private Key Detection"
+regex = '''(?i)-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----'''
+tags = ["key", "crypto"]
+
+[[rules]]
+id = "bearer-token"
+description = "Bearer Token"
+regex = '''(?i)bearer\s+[a-zA-Z0-9_\-\.]+'''
+tags = ["token", "auth"]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database Connection String"
+regex = '''(?i)(mongodb|mysql|postgres|postgresql|redis|amqp)://[^\s]+'''
+tags = ["database", "connection"]
